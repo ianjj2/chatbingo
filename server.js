@@ -43,6 +43,7 @@ validateSupabaseConnection();
 
 // Variável para rastrear usuários online
 let connectedUsers = new Set();
+let lastMessages = new Map(); // Cache para evitar mensagens duplicadas
 
 // Função para obter últimas mensagens do Supabase
 async function getRecentMessages(callback) {
@@ -124,6 +125,26 @@ io.on('connection', (socket) => {
 
     // Quando usuário envia mensagem
     socket.on('send message', (data) => {
+        // Verificar se não é mensagem duplicada
+        const messageKey = `${data.username}:${data.message}:${Date.now()}`;
+        const recentKey = `${data.username}:${data.message}`;
+        
+        if (lastMessages.has(recentKey)) {
+            const lastTime = lastMessages.get(recentKey);
+            if (Date.now() - lastTime < 1000) { // Evitar duplicatas em 1 segundo
+                console.log('Mensagem duplicada ignorada');
+                return;
+            }
+        }
+        
+        lastMessages.set(recentKey, Date.now());
+        
+        // Limpar cache antigo (manter apenas últimas 100 mensagens)
+        if (lastMessages.size > 100) {
+            const entries = Array.from(lastMessages.entries());
+            entries.slice(0, 50).forEach(([key]) => lastMessages.delete(key));
+        }
+        
         // Salvar no Supabase
         saveMessage(data.username, data.message, (success, savedMessage) => {
             if (success && savedMessage) {

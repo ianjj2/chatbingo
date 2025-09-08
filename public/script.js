@@ -5,6 +5,7 @@ let isConnected = false;
 let reconnectAttempts = 0;
 let maxReconnectAttempts = 5;
 let reconnectInterval = 1000; // 1 segundo inicial
+let isSending = false; // Prevenir envio duplo de mensagens
 
 // Elementos DOM
 const loginScreen = document.getElementById('loginScreen');
@@ -137,6 +138,12 @@ function connectToChat() {
     showLoading();
     updateConnectionStatus('connecting');
     
+    // Desconectar socket anterior se existir
+    if (socket && socket.connected) {
+        socket.removeAllListeners();
+        socket.disconnect();
+    }
+    
     try {
         // Inicializar Socket.IO com configurações de reconexão
         socket = io({
@@ -145,7 +152,7 @@ function connectToChat() {
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             reconnectionAttempts: 5,
-            forceNew: false
+            forceNew: true // Força nova conexão para evitar duplicatas
         });
         
         // Event listeners do socket
@@ -163,6 +170,9 @@ function connectToChat() {
 
 // Setup Socket.IO listeners
 function setupSocketListeners() {
+    // Remover listeners anteriores para evitar duplicação
+    socket.removeAllListeners();
+    
     // Conectado com sucesso
     socket.on('connect', () => {
         console.log('Conectado ao servidor');
@@ -304,12 +314,16 @@ function handleSendMessage(e) {
     
     const message = messageInput.value.trim();
     
-    if (!message) return;
+    if (!message || isSending) return;
     
     if (!isConnected) {
         showNotification('Não conectado ao servidor', 'error');
         return;
     }
+    
+    // Prevenir envio duplo
+    isSending = true;
+    sendBtn.disabled = true;
     
     // Enviar mensagem
     socket.emit('send message', {
@@ -320,6 +334,14 @@ function handleSendMessage(e) {
     // Limpar input
     messageInput.value = '';
     adjustTextareaHeight();
+    
+    // Reabilitar envio após delay
+    setTimeout(() => {
+        isSending = false;
+        if (isConnected) {
+            sendBtn.disabled = false;
+        }
+    }, 500);
 }
 
 function handleMessageInput() {
