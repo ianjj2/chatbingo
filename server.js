@@ -177,9 +177,16 @@ app.get('/', (req, res) => {
 });
 
 // Iniciar servidor
-server.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`Acesse: http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    
+    if (process.env.RAILWAY_ENVIRONMENT) {
+        console.log(`🚂 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT}`);
+        console.log(`🔗 URL público será gerado pelo Railway`);
+    } else {
+        console.log(`🏠 Acesso local: http://localhost:${PORT}`);
+    }
 });
 
 // Graceful shutdown
