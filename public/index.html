@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Bingo - Chat em Tempo Real</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <!-- Tela de entrada -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <h1>🎮 Chat Bingo</h1>
+            <p>Digite seu nome para entrar no chat</p>
+            <form id="loginForm">
+                <input 
+                    type="text" 
+                    id="usernameInput" 
+                    placeholder="Seu nome aqui..." 
+                    maxlength="20" 
+                    required
+                    autocomplete="off"
+                >
+                <button type="submit">Entrar no Chat</button>
+            </form>
+            <div id="loginError" class="error-message"></div>
+        </div>
+    </div>
+
+    <!-- Tela do chat -->
+    <div id="chatScreen" class="chat-screen hidden">
+        <!-- Header do chat -->
+        <header class="chat-header">
+            <div class="header-left">
+                <h2>🎮 Chat Bingo</h2>
+                <span id="currentUser" class="current-user"></span>
+            </div>
+            <div class="header-right">
+                <div class="user-count">
+                    <span class="status-dot"></span>
+                    <span id="userCount">0</span> online
+                </div>
+                <button id="leaveBtn" class="leave-btn">Sair</button>
+            </div>
+        </header>
+
+        <!-- Área de mensagens -->
+        <div class="chat-container">
+            <div id="messagesContainer" class="messages-container">
+                <div id="messagesList" class="messages-list">
+                    <!-- Mensagens aparecerão aqui -->
+                </div>
+            </div>
+
+            <!-- Formulário de envio -->
+            <form id="messageForm" class="message-form">
+                <div class="input-container">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="Digite sua mensagem..." 
+                        maxlength="500"
+                        autocomplete="off"
+                        disabled
+                    >
+                    <button type="submit" id="sendBtn" disabled>
+                        <span>➤</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Notificações -->
+        <div id="notifications" class="notifications">
+            <!-- Notificações aparecerão aqui -->
+        </div>
+    </div>
+
+    <!-- Loading spinner -->
+    <div id="loadingSpinner" class="loading-spinner hidden">
+        <div class="spinner"></div>
+        <p>Conectando...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
