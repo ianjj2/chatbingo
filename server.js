@@ -125,31 +125,48 @@ io.on('connection', (socket) => {
 
     // Quando usuário envia mensagem
     socket.on('send message', (data) => {
-        // Verificar se não é mensagem duplicada
-        const messageKey = `${data.username}:${data.message}:${Date.now()}`;
-        const recentKey = `${data.username}:${data.message}`;
+        // Verificar se não é mensagem duplicada usando ID único
+        const messageId = data.id || `${data.username}_${Date.now()}_${Math.random()}`;
         
-        if (lastMessages.has(recentKey)) {
-            const lastTime = lastMessages.get(recentKey);
-            if (Date.now() - lastTime < 1000) { // Evitar duplicatas em 1 segundo
-                console.log('Mensagem duplicada ignorada');
+        if (lastMessages.has(messageId)) {
+            console.log('Mensagem duplicada ignorada pelo ID:', messageId);
+            return;
+        }
+        
+        // Adicionar ID ao cache de mensagens processadas
+        lastMessages.set(messageId, Date.now());
+        
+        // Verificação adicional por conteúdo (backup)
+        const contentKey = `${data.username}:${data.message}`;
+        const now = Date.now();
+        
+        if (lastMessages.has(contentKey)) {
+            const lastTime = lastMessages.get(contentKey);
+            if (now - lastTime < 1000) { // Evitar duplicatas em 1 segundo
+                console.log('Mensagem duplicada ignorada por conteúdo');
                 return;
             }
         }
         
-        lastMessages.set(recentKey, Date.now());
+        lastMessages.set(contentKey, now);
         
-        // Limpar cache antigo (manter apenas últimas 100 mensagens)
-        if (lastMessages.size > 100) {
+        // Limpar cache antigo (manter apenas últimas 200 entradas)
+        if (lastMessages.size > 200) {
             const entries = Array.from(lastMessages.entries());
-            entries.slice(0, 50).forEach(([key]) => lastMessages.delete(key));
+            const cutoff = now - 60000; // Remover entradas mais antigas que 1 minuto
+            entries.forEach(([key, time]) => {
+                if (time < cutoff) {
+                    lastMessages.delete(key);
+                }
+            });
         }
         
         // Salvar no Supabase
         saveMessage(data.username, data.message, (success, savedMessage) => {
             if (success && savedMessage) {
-                // Criar dados da mensagem com timestamp do Supabase
+                // Criar dados da mensagem com ID único e timestamp do Supabase
                 const messageData = {
+                    id: messageId,
                     username: savedMessage.username,
                     message: savedMessage.message,
                     timestamp: savedMessage.created_at
@@ -157,7 +174,7 @@ io.on('connection', (socket) => {
 
                 // Enviar mensagem para todos os usuários conectados
                 io.emit('receive message', messageData);
-                console.log(`Mensagem de ${data.username}: ${data.message}`);
+                console.log(`Mensagem enviada - ID: ${messageId} - ${data.username}: ${data.message}`);
             } else {
                 socket.emit('message error', 'Erro ao enviar mensagem');
             }

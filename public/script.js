@@ -6,6 +6,8 @@ let reconnectAttempts = 0;
 let maxReconnectAttempts = 5;
 let reconnectInterval = 1000; // 1 segundo inicial
 let isSending = false; // Prevenir envio duplo de mensagens
+let processedMessages = new Set(); // IDs de mensagens já processadas
+let messageCounter = 0; // Contador para IDs únicos
 
 // Elementos DOM
 const loginScreen = document.getElementById('loginScreen');
@@ -202,6 +204,24 @@ function setupSocketListeners() {
     
     // Nova mensagem recebida
     socket.on('receive message', (data) => {
+        // Verificar se mensagem já foi processada
+        const messageId = data.id || `${data.username}_${data.timestamp}_${data.message.substring(0, 10)}`;
+        
+        if (processedMessages.has(messageId)) {
+            console.log('Mensagem duplicada ignorada:', messageId);
+            return;
+        }
+        
+        // Marcar como processada
+        processedMessages.add(messageId);
+        
+        // Limitar o Set para evitar memory leak (manter últimas 1000)
+        if (processedMessages.size > 1000) {
+            const messagesArray = Array.from(processedMessages);
+            processedMessages.clear();
+            messagesArray.slice(-500).forEach(id => processedMessages.add(id));
+        }
+        
         addMessage(data, data.username === currentUsername);
     });
     
@@ -325,10 +345,15 @@ function handleSendMessage(e) {
     isSending = true;
     sendBtn.disabled = true;
     
-    // Enviar mensagem
+    // Criar ID único para a mensagem
+    const messageId = `${currentUsername}_${Date.now()}_${++messageCounter}`;
+    
+    // Enviar mensagem com ID único
     socket.emit('send message', {
+        id: messageId,
         username: currentUsername,
-        message: message
+        message: message,
+        timestamp: new Date().toISOString()
     });
     
     // Limpar input
@@ -382,8 +407,15 @@ function focusMessageInput() {
 // Messages display
 function loadHistoricalMessages(messages) {
     messagesList.innerHTML = '';
+    processedMessages.clear(); // Limpar cache ao carregar histórico
     
     messages.forEach(messageData => {
+        // Criar ID para mensagens históricas se não existir
+        const messageId = messageData.id || `hist_${messageData.username}_${messageData.timestamp}_${messageData.message.substring(0, 10)}`;
+        
+        // Marcar como processada para evitar duplicação futura
+        processedMessages.add(messageId);
+        
         addMessage(messageData, messageData.username === currentUsername, false);
     });
     
@@ -518,14 +550,21 @@ function handleLeave() {
 
 function leaveChat() {
     if (socket) {
+        socket.removeAllListeners();
         socket.disconnect();
+        socket = null;
     }
     
     // Limpar sessão salva
     clearUserSession();
     
+    // Limpar cache de mensagens
+    processedMessages.clear();
+    messageCounter = 0;
+    
     currentUsername = '';
     isConnected = false;
+    isSending = false;
     messagesList.innerHTML = '';
     
     showLoginScreen();
