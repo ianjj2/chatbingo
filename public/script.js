@@ -2,6 +2,9 @@
 let socket;
 let currentUsername = '';
 let isConnected = false;
+let reconnectAttempts = 0;
+let maxReconnectAttempts = 5;
+let reconnectInterval = 1000; // 1 segundo inicial
 
 // Elementos DOM
 const loginScreen = document.getElementById('loginScreen');
@@ -23,8 +26,48 @@ const notifications = document.getElementById('notifications');
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
-    focusUsernameInput();
+    checkSavedSession();
 });
+
+// Gerenciamento de sessão local
+function saveUserSession(username) {
+    localStorage.setItem('chatBingo_username', username);
+    localStorage.setItem('chatBingo_sessionTime', Date.now().toString());
+}
+
+function getSavedSession() {
+    const username = localStorage.getItem('chatBingo_username');
+    const sessionTime = localStorage.getItem('chatBingo_sessionTime');
+    
+    // Sessão expira em 24 horas
+    const maxSessionAge = 24 * 60 * 60 * 1000; // 24 horas
+    const now = Date.now();
+    
+    if (username && sessionTime && (now - parseInt(sessionTime)) < maxSessionAge) {
+        return username;
+    }
+    
+    return null;
+}
+
+function clearUserSession() {
+    localStorage.removeItem('chatBingo_username');
+    localStorage.removeItem('chatBingo_sessionTime');
+}
+
+function checkSavedSession() {
+    const savedUsername = getSavedSession();
+    
+    if (savedUsername) {
+        // Auto-reconectar com usuário salvo
+        showNotification(`Bem-vindo de volta, ${savedUsername}!`, 'success');
+        currentUsername = savedUsername;
+        connectToChat();
+    } else {
+        // Mostrar tela de login
+        focusUsernameInput();
+    }
+}
 
 // Event Listeners
 function initializeEventListeners() {
@@ -80,6 +123,7 @@ function handleLogin(e) {
     }
     
     currentUsername = username;
+    saveUserSession(username); // Salvar sessão
     connectToChat();
 }
 
@@ -91,10 +135,18 @@ function handleUsernameInput() {
 // Connect to chat
 function connectToChat() {
     showLoading();
+    updateConnectionStatus('connecting');
     
     try {
-        // Inicializar Socket.IO
-        socket = io();
+        // Inicializar Socket.IO com configurações de reconexão
+        socket = io({
+            timeout: 5000,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 5,
+            forceNew: false
+        });
         
         // Event listeners do socket
         setupSocketListeners();
@@ -115,6 +167,7 @@ function setupSocketListeners() {
     socket.on('connect', () => {
         console.log('Conectado ao servidor');
         isConnected = true;
+        updateConnectionStatus('connected');
     });
     
     // Verificação de nome de usuário
@@ -168,26 +221,46 @@ function setupSocketListeners() {
     socket.on('disconnect', () => {
         console.log('Desconectado do servidor');
         isConnected = false;
+        updateConnectionStatus('disconnected');
         disableMessageInput();
         showNotification('Conexão perdida', 'error');
     });
     
-    // Reconnectado
-    socket.on('reconnect', () => {
-        console.log('Reconectado ao servidor');
+    // Tentando reconectar
+    socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`Tentativa de reconexão ${attemptNumber}`);
+        updateConnectionStatus('reconnecting');
+        showNotification(`Tentando reconectar... (${attemptNumber}/5)`, 'info');
+    });
+
+    // Reconectado com sucesso
+    socket.on('reconnect', (attemptNumber) => {
+        console.log(`Reconectado ao servidor após ${attemptNumber} tentativas`);
         isConnected = true;
+        reconnectAttempts = 0;
+        updateConnectionStatus('connected');
         enableMessageInput();
-        showNotification('Reconectado!', 'success');
+        showNotification('✅ Reconectado com sucesso!', 'success');
         
         // Re-entrar no chat
         socket.emit('user joined', currentUsername);
     });
+
+    // Falha na reconexão
+    socket.on('reconnect_failed', () => {
+        console.log('Falha na reconexão após várias tentativas');
+        isConnected = false;
+        disableMessageInput();
+        showNotification('❌ Não foi possível reconectar. Tente recarregar a página.', 'error');
+    });
     
     // Erro de conexão
-    socket.on('connect_error', () => {
-        console.error('Erro de conexão');
-        hideLoading();
-        showLoginError('Erro ao conectar ao servidor');
+    socket.on('connect_error', (error) => {
+        console.error('Erro de conexão:', error);
+        if (!isConnected) {
+            hideLoading();
+            showLoginError('Erro ao conectar ao servidor');
+        }
     });
 }
 
@@ -372,6 +445,32 @@ function updateUserCount(count) {
     userCountSpan.textContent = count;
 }
 
+// Status da conexão
+function updateConnectionStatus(status) {
+    const statusDot = document.querySelector('.status-dot');
+    if (!statusDot) return;
+    
+    // Remover classes anteriores
+    statusDot.classList.remove('connecting', 'disconnected', 'reconnecting');
+    
+    // Adicionar nova classe
+    switch(status) {
+        case 'connecting':
+            statusDot.classList.add('connecting');
+            break;
+        case 'disconnected':
+            statusDot.classList.add('disconnected');
+            break;
+        case 'reconnecting':
+            statusDot.classList.add('reconnecting');
+            break;
+        case 'connected':
+        default:
+            // Estado padrão (verde)
+            break;
+    }
+}
+
 // Notifications
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
@@ -399,6 +498,9 @@ function leaveChat() {
     if (socket) {
         socket.disconnect();
     }
+    
+    // Limpar sessão salva
+    clearUserSession();
     
     currentUsername = '';
     isConnected = false;
